@@ -1,22 +1,19 @@
 name: CI/CD
-
 on:
   push:
     branches: [master]
   pull_request:
     branches: [master]
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.5"
+          go-version: "1.21.5"
 
       - name: Download dependencies
         run: go mod download
@@ -31,61 +28,35 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.5"
+          go-version: "1.21.5"
 
       - name: Build Go application
         run: go build -o azure-server .
 
-      - name: Deploy to Azure VM via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          script: |
-            # Copy files from GitHub workspace to VM using scp
-            scp -r -o StrictHostKeyChecking=no ${{ github.workspace }}/* ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/home/azureuser/
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-            # Navigate to the azureuser home directory
-            cd /home/azureuser
+      - name: Copy files to Azure VM
+        run: |
+          scp -r -o StrictHostKeyChecking=no ./* ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/home/azureuser/
 
-            # Check if server is already running and stop it
-            if pgrep -f "go run server.go" > /dev/null; then
-                echo "Stopping existing server..."
-                pkill -f "go run server.go"
-                sleep 2
-            fi
-
-            # Ensure Go is installed (install if not present)
-            if ! command -v go &> /dev/null; then
-                echo "Installing Go..."
-                wget -q https://go.dev/dl/go1.25.5.linux-amd64.tar.gz
-                sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.25.5.linux-amd64.tar.gz
-                export PATH=$PATH:/usr/local/go/bin
-                echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-                rm go1.25.5.linux-amd64.tar.gz
-            fi
-
-            # Download dependencies
-            go mod download
-
-            # Run the server in background
-            nohup go run server.go > server.log 2>&1 &
-
-            # Wait a moment and check if it's running
-            sleep 3
-            if pgrep -f "go run server.go" > /dev/null; then
-                echo "Server started successfully!"
-                echo "Process ID: $(pgrep -f "go run server.go")"
-            else
-                echo "Server failed to start. Check server.log for details."
-                cat server.log
-            fi
+      - name: Deploy to Azure VM
+        run: |
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} bash << 'EOF'
+            pkill -f "azure-server" || true
+            fuser -k 8080/tcp || true
+            sleep 2
+            chmod +x /home/azureuser/azure-server
+            nohup /home/azureuser/azure-server > /home/azureuser/server.log 2>&1 &
+            disown
+          EOF
