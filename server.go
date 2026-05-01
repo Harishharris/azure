@@ -10,7 +10,7 @@ func main() {
 		w.Write([]byte("Hello World!!"));
 	})
 	
-	fmt.Println("Server up and running!")
+	fmt.Println("Server up and running!!")
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
 		panic("Failed to start the server!")
