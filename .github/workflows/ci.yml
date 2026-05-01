@@ -47,12 +47,12 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_NAME }}
+          username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
             # Copy files from GitHub workspace to VM using scp
-            scp -r -o StrictHostKeyChecking=no ${{ github.workspace }}/* ${{ secrets.VM_NAME }}@${{ secrets.VM_HOST }}:/home/azureuser/
+            scp -r -o StrictHostKeyChecking=no ${{ github.workspace }}/* ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/home/azureuser/
 
             # Navigate to the azureuser home directory
             cd /home/azureuser
